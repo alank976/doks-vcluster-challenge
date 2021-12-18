@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: server
+  name: httpbin
 spec:
   selector:
     matchLabels:
-      app: server
+      app: httpbin
   template:
     metadata:
       labels:
-        app: server
+        app: httpbin
     spec:
       containers:
-      - name: server
+      - name: httpbin
         image: kennethreitz/httpbin
         ports:
         - containerPort: 80
@@ -20,10 +20,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: server
+  name: httpbin
 spec:
   selector:
-    app: server
+    app: httpbin
   ports:
   - port: 80
     targetPort: 80

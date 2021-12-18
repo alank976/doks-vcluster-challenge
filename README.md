@@ -2,8 +2,20 @@
 
 Aroused by https://www.digitalocean.com/community/pages/kubernetes-challenge to give `vcluster` a shot.
 
+## k8s Cluster Upgrade Challenge
+> Install vcluster to test upgrades (eg. 1.20 to 1.21 DOKS version) of your cluster. With a virtual cluster, you can create a new Kubernetes cluster inside your existing DOKS cluster, test the application in this new vcluster, and then upgrade your original cluster if everything works well with the new version. 
+
+In this challenge exercise, the background is designed that the real cluster DOKS (in v1.20.11) has a `httpbin` backend application up and running, and we are going to use vcluster to make sure the cluster upgrade (v1.20.11 -> v1.21.5) won't incur any unexpected regression.
+
+
+## DOKS
+Let's create a DOKS with v1.20:
+![v1.20](./images/doks-v1.20.png)
+
 ## Install vcluster CLI (locally)
-Once the DOKS is created and the `kubectl` CLI is configured properly, we are ready to go. First thing first, we have to download and install the `vcluster` CLI locally by following the [docs](https://www.vcluster.com/docs/getting-started/setup#download-vcluster-cli). 
+Once the DOKS is ready and the `kubectl` CLI is configured properly, we are ready to go. 
+
+First thing first, we have to download and install the `vcluster` CLI locally by following the [docs](https://www.vcluster.com/docs/getting-started/setup#download-vcluster-cli). 
 
 
 ## Deploy
@@ -15,14 +27,11 @@ $ vcluster create team-1 -n ns-1
 Aha, the docs didn't mention this pre-requisite. But it's alright, we can manage it.
 A few seconds later, `helm` CLI is installed 👌. Let's retry.
 
-```bash
-$ vcluster create team-1 -n ns-1
-[info]   Creating namespace ns-1
-[info]   execute command: helm upgrade team-1 vcluster --repo https://charts.loft.sh --version 0.4.5 --kubeconfig /tmp/921674663 --namespace ns-1 --install --repository-config='' --values /tmp/307639514
-[done] √ Successfully created virtual cluster team-1 in namespace ns-1. Use 'vcluster connect team-1 --namespace ns-1' to access the virtual cluster
-```
+![](images/vcluster-creation.gif)
 
 As it's literal meaning, vcluster seemingly uses helm under the hood to make all magics happen. Let's sneak in a bit what are applied from the chart.
+
+![](images/helm-manifest.gif)
 
 ```bash
 $ helm -n ns-1 get manifest team-1 | grep Source
@@ -38,133 +47,58 @@ Surprisingly, vcluster works with just a few manifests. No wonder it's advertise
 
 ## Use the created vcluster
 As suggested, running the connect command and start port-forwarding.
-```bash
-$ vcluster connect team-1 -n ns-1
-[done] √ Virtual cluster kube config written to: ./kubeconfig.yaml. You can access the cluster via `kubectl --kubeconfig ./kubeconfig.yaml get namespaces`
-[info]   Starting port-forwarding at 8443:8443
-Forwarding from 127.0.0.1:8443 -> 8443
-Forwarding from [::1]:8443 -> 844
-```
+
+![](images/connect-via-port-forwarding.gif)
+
 So, from now on, we can run `kubectl --kubeconfig ./kubeconfig.yaml <sub-command>` against this virtual cluster without knowing whether it's real. Carrying the `--kubeconfig` maybe a bit lame but let's stick with it for now.
 
-```
-$ kubectl --kubeconfig ./kubeconfig.yaml get namespace
-NAME              STATUS   AGE
-default           Active   21h
-kube-system       Active   21h
-kube-public       Active   21h
-kube-node-lease   Active   21h
-```
-It does look like a brand new cluster. 
+![](images/get-ns-in-vcluster.gif)
 
-## Deploy apps and test k8s Service
-Running:
+It does look like a brand new cluster. But wait, what's the vcluster version?
 
-`kubectl --kubeconfig ./kubeconfig.yaml apply -f doks-vcluster-challenge/server.yaml`
+![](images/get-version-vcluster.png)
 
-and
+I feel like vcluster is smart enough to pick the same version of the underlying cluster as (1.20.11) for its k3s. That's a great set up and we are going to upgrade this vcluster as a guinea pig.
 
-```bash
-$ kubectl --kubeconfig ./kubeconfig.yaml get all
-NAME                          READY   STATUS    RESTARTS   AGE
-pod/server-5bc67676fd-9rc8r   1/1     Running   0          64s
+## Deploy apps and test k8s Service in real cluster
+Let's simulate the real cluster has an application running.
+![](images/deploy-in-real.gif)
 
-NAME                 TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
-service/kubernetes   ClusterIP   10.245.48.66    <none>        443/TCP   22h
-service/server       ClusterIP   10.245.98.125   <none>        80/TCP    5m23s
+Using a curl job to make sure it's working okay:
+![](images/curl-before-upgrade.gif)
 
-NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/server   1/1     1            1           5m24s
+### Deploy apps in vcluster with v1.20.11
+![](images/curl-before-upgrade-in-vcluster.gif)
 
-NAME                                DESIRED   CURRENT   READY   AGE
-replicaset.apps/server-5bc67676fd   1         1         1       65s
-```
 
+### How syncer works
 Alright. But then, how's the real cluster looks like?
-
-```bash
-$ KUBECONFIG="" kubectl get -n ns-1 all
-NAME                                                  READY   STATUS    RESTARTS   AGE
-pod/coredns-7448499f4d-tfn7w-x-kube-system-x-team-1   1/1     Running   0          22h
-pod/server-5bc67676fd-9rc8r-x-default-x-team-1        1/1     Running   0          4m12s
-pod/team-1-0                                          2/2     Running   0          22h
-
-NAME                                      TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                  AGE
-service/kube-dns-x-kube-system-x-team-1   ClusterIP   10.245.32.164    <none>        53/UDP,53/TCP,9153/TCP   22h
-service/server-x-default-x-team-1         ClusterIP   10.245.98.125    <none>        80/TCP                   8m31s
-service/team-1                            ClusterIP   10.245.48.66     <none>        443/TCP                  22h
-service/team-1-headless                   ClusterIP   None             <none>        443/TCP                  22h
-service/team-1-node-9nn58                 ClusterIP   10.245.208.244   <none>        10250/TCP                4m12s
-service/team-1-node-s2qpb                 ClusterIP   10.245.17.19     <none>        10250/TCP                22h
-
-NAME                      READY   AGE
-statefulset.apps/team-1   1/1     22h
-```
-
+![](images/syncer-suffix.png)
 As we can see, both server and pod are appended `x-<inner-namespace>-x-<vcluster-name>` suffix. vcluster uses **syncer** to mimic the workloads are logically in a virtual cluster according to its documentation.
 
-## Within vcluster traffic
+### Within vcluster traffic
+We have already seen how the curl job reaches the httpbin within the vcluster. vcluster has it documented how it's achieved by having another DNS service in the vcluster instead of talking to the "outer" DNS service directly in the real cluster.
 
-Let's try to have a pod in the vcluster sends a request to another pod via the k8s service in the same vcluster.
-
-```bash
-kubectl --kubeconfig ./kubeconfig.yaml create job --image=curlimages/curl curl -- curl -v http://server/anything
-
-$ kubectl --kubeconfig ./kubeconfig.yaml logs curl-c9nth
-* Connected to server (10.245.98.125) port 80 (#0)
-> GET /anything HTTP/1.1
-> Host: server
-> User-Agent: curl/7.80.0-DEV
-> Accept: */*
-> 
-* Mark bundle as not supporting multiuse
-< HTTP/1.1 200 OK
-< Server: gunicorn/19.9.0
-< Date: Fri, 17 Dec 2021 11:53:21 GMT
-< Connection: keep-alive
-< Content-Type: application/json
-< Content-Length: 267
-< Access-Control-Allow-Origin: *
-< Access-Control-Allow-Credentials: true
-< 
-{ [267 bytes data]
-100   267  100   267    0     0  10086      0 --:--:-- --:--:-- --:--:-- 10269
-* Connection #0 to host server left intact
-{
-  "args": {}, 
-  "data": "", 
-  "files": {}, 
-  "form": {}, 
-  "headers": {
-    "Accept": "*/*", 
-    "Host": "server", 
-    "User-Agent": "curl/7.80.0-DEV"
-  }, 
-  "json": null, 
-  "method": "GET", 
-  "origin": "10.244.1.228", 
-  "url": "http://server/anything"
-}
-```
-That is not a surprise. vcluster has it documented how it's achieved by having another DNS service in the vcluster instead of talking to the "outer" DNS service directly in the real cluster.
-
-On the other hand, we saw `service/server-x-default-x-team-1` in the real cluster. My curiosity drives me to try the same from the real cluster, to this service.
-
-```bash
-KUBECONFIG="" kubectl -n ns-1 create job --image=curlimages/curl curl -- curl -v http://server-x-default-x-team-1/anything
-
-* Connected to server-x-default-x-team-1 (10.245.98.125) port 80 (#0)
-> GET /anything HTTP/1.1
-> Host: server-x-default-x-team-1
-> User-Agent: curl/7.80.0-DEV
-> Accept: */*
-> 
-* Mark bundle as not supporting multiuse
-< HTTP/1.1 200 OK
-{omitted...}
-```
+On the other hand, we saw `service/httpbin-x-default-x-team-1` in the real cluster. My curiosity drives me to try the same from the real cluster, to this service.
+![](images/curl-cross-vcluster.gif)
 
 It works. The lowest-level stuffs like pod and service "physically" exist in the real cluster and what vcluster does is just sync or we can take it as "sym-link" I believe.
+
+## Upgrade vcluster (k3s) to target DOKS upgradable version (v1.21.5)
+Apologies for sidetracking to syncer stuff. Let's focus on cluster upgrade now. To do so, vcluster CLI allows us to upgrade the cluster by specifying image tag of the k3s.
+According to [Dockerhub](https://hub.docker.com/r/rancher/k3s/tags?page=1&name=1.21.5), `v1.21.5-k3s2` will be used.
+![](images/dockerhub-k3s.png)
+
+I would love to also give `--expose` a try because I am tired of port-forwarding holding one of my consoles. So we are going to run this command:
+```bash
+vcluster create team-1 \
+  -n ns-1 \
+  --upgrade \
+  --k3s-image v1.21.5-k3s2 \
+  --expose
+```
+
+![](images/upgrade-vcluster.gif)
 
 ## Exposed vcluster
 Tired of port-forwarding holding one of your consoles? Let's try exposing it with a LoadBalancer service as described in vcluster docs:
