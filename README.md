@@ -50,7 +50,7 @@ As suggested, running the connect command and start port-forwarding.
 
 ![](images/connect-via-port-forwarding.gif)
 
-So, from now on, we can run `kubectl --kubeconfig ./kubeconfig.yaml <sub-command>` against this virtual cluster without knowing whether it's real. Carrying the `--kubeconfig` maybe a bit lame but let's stick with it for now.
+So, from now on, we can run `kubectl --kubeconfig ./kubeconfig.yaml <sub-command>` against this virtual cluster without knowing whether it's real. Carrying the `--kubeconfig` maybe a bit lame but let's stick with it for now, since it helps us differentiate which cluster we will be targetting to.
 
 ![](images/get-ns-in-vcluster.gif)
 
@@ -94,46 +94,31 @@ I would love to also give `--expose` a try because I am tired of port-forwarding
 vcluster create team-1 \
   -n ns-1 \
   --upgrade \
-  --k3s-image v1.21.5-k3s2 \
+  --k3s-image rancher/k3s:v1.21.5-k3s2 \
   --expose
 ```
-
 ![](images/upgrade-vcluster.gif)
+The generated kubeconfig.yaml would be automatically updated as well. 
+![](images/updated-exposed-config.png)
 
-## Exposed vcluster
-Tired of port-forwarding holding one of your consoles? Let's try exposing it with a LoadBalancer service as described in vcluster docs:
-```bash
-$ vcluster create exposed-cluster -n ns-1 --expose 
-...
-$ kubectl -n ns-1 get service
-NAME                                       TYPE           CLUSTER-IP       EXTERNAL-IP       PORT(S)                  AGE
-exposed-cluster                            LoadBalancer   10.245.121.213   157.230.192.198   443:32280/TCP            3m12s
-exposed-cluster-headless                   ClusterIP      None             <none>            443/TCP                  3m12s
-exposed-cluster-node-f72ql                 ClusterIP      10.245.244.3     <none>            10250/TCP                2m26s
-kube-dns-x-kube-system-x-exposed-cluster   ClusterIP      10.245.45.180    <none>            53/UDP,53/TCP,9153/TCP   2m26s
-kube-dns-x-kube-system-x-team-1            ClusterIP      10.245.32.164    <none>            53/UDP,53/TCP,9153/TCP   23h
-server-x-default-x-team-1                  ClusterIP      10.245.98.125    <none>            80/TCP                   43m
-team-1                                     ClusterIP      10.245.48.66     <none>            443/TCP                  23h
-team-1-headless                            ClusterIP      None             <none>            443/TCP                  23h
-team-1-node-9nn58                          ClusterIP      10.245.208.244   <none>            10250/TCP                39m
-team-1-node-s2qpb                          ClusterIP      10.245.17.19     <none>            10250/TCP                23h
-...
-$ vcluster connect exposed-cluster -n ns-1 --server=https://157.230.192.198
-...
-$ export KUBECONFIG=./kubeconfig.yaml
-$ kubectl get ns
-NAME              STATUS   AGE
-default           Active   9m19s
-kube-system       Active   9m19s
-kube-public       Active   9m19s
-kube-node-lease   Active   9m19s
-```
+Now, the vcluster should be with version 1.21.5.
+![](images/upgraded-vcluster-version.gif)
 
-🎉Another brand new cluster ready for another team to mess up with. vcluster allows `--server` so ingress would work too, though we are not going to bother ingress controller in this challenge. 
+Alright, let's test if the httpbin still works after cluster upgrade. 
+![](images/curl-after-upgrade.gif)
+
+## Upgrade DOKS to 1.21.5
+Hurray! vcluster proves 1.21.5 works for us. Let's upgrade DOKS! 
+![](images/upgrade-doks.gif)
+After a while, new k8s nodes for the new version of cluster are created. 
+![](images/droplets.png)
+Now, let's update the kubeconfig file in case the URL is changed, then we will also verify the cluster version.
+
+## Verify if the httpbin backend is still working fine
+![](images/curl-after-doks-upgrade.gif)
 
 ## Cleanup
-To cleanup, it is as easy as:
+Last but not least, cleanup is as easy as:
 ```bash
 vcluster delete team-1 -n ns-1
-vcluster delete exposed-cluster -n ns-1
 ```
